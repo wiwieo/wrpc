@@ -1,10 +1,10 @@
 package main
 
 import (
-	"net"
 	"reflect"
-	"wrpc/werror"
 	"wrpc/server"
+	_ "net/http/pprof"
+	"time"
 )
 
 
@@ -17,16 +17,8 @@ type header struct {
 
 func main() {
 	server.Register(&GateWay{}, "")
-	addr, err := net.ResolveTCPAddr("tcp", "localhost:3333")
-	werror.CheckErr(err, 1)
-	lister, err := net.ListenTCP("tcp", addr)
-	werror.CheckErr(err, 2)
-	defer lister.Close()
-	for {
-		conn, err := lister.Accept()
-		werror.CheckErr(err, 3)
-		go server.Handle(conn)
-	}
+	server.StartServerForTCP(":3333")
+	//http.ListenAndServe(":8080", nil)
 }
 
 type GateWay struct {
@@ -50,6 +42,7 @@ func (gw GateWay) Add2(p *Param) int {
 }
 
 func (gw GateWay) Add3(p *Param) int {
+	time.Sleep(3*time.Second)
 	return p.One + p.Two
 }
 

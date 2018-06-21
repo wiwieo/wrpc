@@ -7,27 +7,32 @@ import (
 	"net"
 	"wrpc/constant"
 	"wrpc/entity/client"
-	"time"
 )
 
 type Client struct {
 	Conn net.Conn
-	close chan uint8
+	// 用于等待响应结果
+	wait chan uint8
+	// 不自动关闭连接，由调用使用方主动关闭连接
+	//close chan uint8
 }
 
 func NewClient(conn net.Conn) Client {
 	return Client{Conn: conn}
 }
 
+// 不自动关闭连接，由调用使用方主动关闭连接
 func (c *Client) Close(){
-	select {
-	case <- c.close:
-		c.Conn.Close()
-		fmt.Println("正常关闭")
-	case <- time.After(constant.TIME_OUT):
-		fmt.Println("超时关闭")
-		c.Conn.Close()
-	}
+	//select {
+	//case <- c.close:
+	//	close(c.close)
+	//	//c.Conn.Close()
+	//	fmt.Println("正常关闭")
+	//case <- time.After(constant.TIME_OUT):
+	//	fmt.Println("超时关闭")
+	//	close(c.close)
+	//	//c.Conn.Close()
+	//}
 }
 
 // 客户端调用
@@ -36,13 +41,14 @@ func (c *Client) Close(){
 // args：调用的参数
 // reply: 返回值
 func (c *Client) Call(serviceName, methodName string, args []interface{}, reply ...interface{}) error {
-	c.close = make(chan uint8)
+	c.wait = make(chan uint8)
 	// 关闭连接
 	defer c.Close()
 	// 组装调用信息，并序列化，写入
 	go c.request(serviceName, methodName, args)
 	// 返回结果
 	go c.response(reply...)
+	<- c.wait
 	return nil
 }
 
@@ -72,7 +78,7 @@ func (c *Client) response(reply ...interface{}) error {
 	// 需要自旋来获取返回结果
 	for {
 		bufferReader := bufio.NewReader(c.Conn)
-		context, _, err := bufferReader.ReadLine()
+		context, err := bufferReader.ReadString(constant.END_SIGN)
 		if err != nil {
 			return err
 		}
@@ -80,7 +86,7 @@ func (c *Client) response(reply ...interface{}) error {
 			continue
 		}
 		var rsp client.Response
-		err = json.Unmarshal(context, &rsp)
+		err = json.Unmarshal([]byte(context), &rsp)
 		if err != nil {
 			return err
 		}
@@ -97,7 +103,7 @@ func (c *Client) response(reply ...interface{}) error {
 			fmt.Println(err)
 			return err
 		}
-		c.close <- 1
+		c.wait <- 1
 		return nil
 	}
 	return nil

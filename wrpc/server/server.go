@@ -11,26 +11,65 @@ import (
 	"wrpc/werror"
 )
 
+type Server struct {
+	Conn  net.Conn
+	// 服务端应该不需要主动关闭连接
+	// 此处先注释不关闭，由客户端进行关闭
+	//close chan uint8
+}
+
+func StartServerForTCP(host string)  {
+	addr, err := net.ResolveTCPAddr("tcp", host)
+	werror.CheckErr(err)
+	lister, err := net.ListenTCP("tcp", addr)
+	defer lister.Close()
+	for {
+		conn, err := lister.Accept()
+		s := &Server{
+			Conn:  conn,
+			//close: make(chan uint8),
+		}
+		werror.CheckErr(err)
+		go s.Handle()
+	}
+}
+
 var MethodPool map[string]*server.Service
 
+// 服务端应该不需要主动关闭连接
+// 此处先注释不关闭，由客户端进行关闭
+func (s *Server) Close() {
+	//select {
+	//case <-s.close:
+	//	fmt.Println("正常关闭")
+	//	close(s.close)
+	//	//s.Conn.Close()
+	//case <-time.After(constant.TIME_OUT):
+	//	fmt.Println("超时关闭")
+	//	//s.Conn.Close()
+	//	close(s.close)
+	//}
+}
+
 // 接收到请求后，进行统筹处理
-func Handle(conn net.Conn) {
+func (s *Server) Handle() {
+	defer s.Close()
 	// 用于存放接收到信息
 	var head *server.CallInfo = new(server.CallInfo)
 	// 调用结果通知
 	head.Reply = make(chan server.Response)
 	// 读取请求
-	go readRequest(conn, head)
+	go s.readRequest(head)
 	// 响应请求
-	go sendResponse(conn, head)
+	go s.sendResponse(head)
 }
 
 // 读取请求（采用json格式进行交互）
-func readRequest(conn net.Conn, head *server.CallInfo) {
-	bufferReader := bufio.NewReader(conn)
+func (s *Server) readRequest(head *server.CallInfo) {
+	bufferReader := bufio.NewReader(s.Conn)
 	for {
 		// 按行读取数据。客户端发送消息时，一条调用必须在一行内（协议）
-		content, _, err := bufferReader.ReadLine()
+		content, err := bufferReader.ReadString(constant.END_SIGN)
 		if len(content) > 0 && err == nil {
 			fmt.Println(fmt.Sprintf("通过TCP监听到的数据为：%s", content))
 		} else {
@@ -50,14 +89,16 @@ func readRequest(conn net.Conn, head *server.CallInfo) {
 		}
 		// 调用具体的方法
 		go invoke(head)
+		break
 	}
 }
 
 // 响应请求
-func sendResponse(conn net.Conn, h *server.CallInfo) {
-	// 响应完之后，关闭当前连接
-	defer conn.Close()
+func (s *Server) sendResponse(h *server.CallInfo) {
+	// 响应完之后，关闭连接
+	//defer func(){s.close <-0}()
 	rtn := <-h.Reply
+	close(h.Reply)
 	// 如果调用过程出错，则直接返回错误信息，不返回数据
 	if rtn.Code == constant.SUCCESS {
 		var reply []interface{}
@@ -68,19 +109,18 @@ func sendResponse(conn net.Conn, h *server.CallInfo) {
 		}
 		rtn.Data = reply
 	}
-	data, err := json.Marshal(rtn)
-	werror.CheckErr(err, 10)
+	data, _ := json.Marshal(rtn)
 	// 写入时，必须以换行为结尾
 	data = append(data, []byte("\n")...)
 	// 写入数据
-	conn.Write(data)
+	s.Conn.Write(data)
 }
 
 // 注册方法
 // 将服务名称及其可导出方法存放在一个map中
 // 作用：一：可以进行拦截作用，对外只提供开放的方法
 // 二：go语言中，使用反射调用方法时，必须知道具体的服务实例，才能调用（不如java强大）
-// 注：不能存在多个同服务名且同方法名的方法。如：person/action下的方法run和animal/action下的方法run不能同时进行注册
+// 注：如果存在多个同服务名且同方法名的方法，则需要起个别名
 func Register(rcvr interface{}, name string) {
 	// 将指针方法也注册进来
 	service := reflect.TypeOf(rcvr)
@@ -152,7 +192,7 @@ FAILED_RETURN:
 }
 
 // 组装调用方法所需的参数
-func getParam(s *server.Service, head *server.CallInfo) ([]reflect.Value, error){
+func getParam(s *server.Service, head *server.CallInfo) ([]reflect.Value, error) {
 	var args []reflect.Value = make([]reflect.Value, len(head.Args)+1)
 	// 其中第一个参数为：服务信息，具体的struct（reflect调用所必需）
 	args[0] = s.OriginService

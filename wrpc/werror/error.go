@@ -5,9 +5,9 @@ import (
 	"os"
 )
 
-func CheckErr(err error, line int) {
+func CheckErr(err error) {
 	if err != nil {
-		fmt.Println(fmt.Sprintf("%d, %s", line, err))
+		fmt.Println(fmt.Sprintf("%s", err))
 		os.Exit(-1)
 	}
 }
