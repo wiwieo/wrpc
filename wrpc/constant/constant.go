@@ -9,5 +9,5 @@ const (
 	FAILED           = "1"
 	FAILED_MSG       = "失败。"
 	METHOD_NOT_EXIST = "方法不存在。"
-	TIME_OUT = 1000*time.Second
+	TIME_OUT = 10*time.Second
 )

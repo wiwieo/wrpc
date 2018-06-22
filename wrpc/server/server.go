@@ -20,7 +20,7 @@ type Server struct {
 
 func StartServerForTCP(host string)  {
 	addr, err := net.ResolveTCPAddr("tcp", host)
-	werror.CheckErr(err)
+	werror.CheckError(err)
 	lister, err := net.ListenTCP("tcp", addr)
 	defer lister.Close()
 	for {
@@ -29,7 +29,7 @@ func StartServerForTCP(host string)  {
 			Conn:  conn,
 			//close: make(chan uint8),
 		}
-		werror.CheckErr(err)
+		werror.CheckError(err)
 		go s.Handle()
 	}
 }
