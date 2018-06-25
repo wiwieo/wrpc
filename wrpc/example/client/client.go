@@ -1,25 +1,15 @@
 package main
 
 import (
-	"net"
-	"fmt"
-	"wrpc/werror"
-	"wrpc/client"
 	"flag"
-	"wrpc/etcdv3"
-	"strings"
-	"context"
-	"wrpc/etcdv3/balancer/random"
+	"wrpc/client"
+	"net/http"
+	_ "net/http/pprof"
+	"wrpc/etcdv3/balancer"
+	"os"
+	"fmt"
 )
 
-type Param struct {
-	One, Two int
-	SonParam
-}
-
-type SonParam struct {
-	SOne, STwo int
-}
 // 并发访问远程方法
 //func main() {
 //	var wg sync.WaitGroup
@@ -47,6 +37,10 @@ type SonParam struct {
 //	fmt.Println("结束时间：%v", time.Now())
 //}
 
+type Example struct {
+	C *client.Client
+}
+
 var(
 	HOST = flag.String("host", "localhost:33333", "添加环境变量，如 [-host=localhost:33333]")
 	USE_ETCD = flag.Bool("use_etcd", true, "添加环境变量，如 [-use_etcd=true|false]")
@@ -59,36 +53,19 @@ func init() {
 }
 
 func main() {
-	var addr = HOST
-	if *USE_ETCD {
-		// 服务注册进etcd中
-		e, err := etcdv3.NewEtcdv3(&etcdv3.ServerInfo{
-			Name: *SERVERNAME,
-			Endpoints: strings.Split(*ENDPOINTS, ","),
-			TTL: 10,
-			Ctx: context.Background(),
-		})
-		werror.CheckError(err)
-		b := &random.Random{}
-		*addr = e.Resolve(b)
-		go e.Watch()
+	c, err := client.DialTCPConnect(*USE_ETCD, *HOST, balancer.BALANCE_ROUND_ROBIN, *SERVERNAME, *ENDPOINTS)
+	if err != nil{
+		fmt.Println("系统连接报错")
+		os.Exit(-1)
 	}
-
-	// 连接服务器
-	conn, err := net.Dial("tcp", *addr)
-	werror.CheckError(err)
-	defer func() {
-		conn.Close()
-	}()
-	c := client.NewClient(conn)
-
-	// 调用远程方法
-	var rply int
-	err = c.Call("GateWay", "Add3", []interface{}{Param{One:1, Two:2}}, &rply)
-	if err != nil {
-		fmt.Println(err)
+	e := &Example{
+		C: c,
 	}
-	fmt.Println(fmt.Sprintf("add3的结果：%v", rply))
+	e.StartWeb()
 }
 
+func (e *Example) StartWeb(){
+	http.HandleFunc("/add", e.Add)
 
+	http.ListenAndServe(":8080", nil)
+}

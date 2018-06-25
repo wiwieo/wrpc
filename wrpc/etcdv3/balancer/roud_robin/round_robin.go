@@ -2,9 +2,11 @@ package round_robin
 
 import (
 	"github.com/coreos/etcd/clientv3"
+	"fmt"
 )
 
 type RoundRobin struct {
+	Count int64
 }
 
 func (rb *RoundRobin) Resovle(rsp *clientv3.GetResponse) string {
@@ -13,5 +15,9 @@ func (rb *RoundRobin) Resovle(rsp *clientv3.GetResponse) string {
 	for _, v:= range kvs{
 		addrs = append(addrs, string(v.Value))
 	}
-	return addrs[0]
+	addr := addrs[rb.Count%3]
+	rb.Count = rb.Count+1
+	fmt.Println("current: ", addr)
+	fmt.Println("count: ", rb.Count)
+	return addr
 }

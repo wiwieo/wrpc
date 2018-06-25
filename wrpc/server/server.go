@@ -9,16 +9,18 @@ import (
 	"wrpc/constant"
 	"wrpc/entity/server"
 	"wrpc/werror"
+	"wrpc/logger"
 )
 
 type Server struct {
-	Conn  net.Conn
+	Conn net.Conn
+	Log  *logger.Logger
 	// 服务端应该不需要主动关闭连接
 	// 此处先注释不关闭，由客户端进行关闭
 	//close chan uint8
 }
 
-func StartServerForTCP(host string)  {
+func StartServerForTCP(host string) {
 	addr, err := net.ResolveTCPAddr("tcp", host)
 	werror.CheckError(err)
 	lister, err := net.ListenTCP("tcp", addr)
@@ -26,7 +28,8 @@ func StartServerForTCP(host string)  {
 	for {
 		conn, err := lister.Accept()
 		s := &Server{
-			Conn:  conn,
+			Conn: conn,
+			Log: logger.NewStdLogger(true, true, true, true, true),
 			//close: make(chan uint8),
 		}
 		werror.CheckError(err)
@@ -70,8 +73,12 @@ func (s *Server) readRequest(head *server.CallInfo) {
 	for {
 		// 按行读取数据。客户端发送消息时，一条调用必须在一行内（协议）
 		content, err := bufferReader.ReadString(constant.END_SIGN)
-		if len(content) > 0 && err == nil {
-			fmt.Println(fmt.Sprintf("通过TCP监听到的数据为：%s", content))
+		if err != nil{
+			s.Log.Trace("读取出错，需要关闭连接。")
+			break
+		}
+		if len(content) > 0{
+			s.Log.Trace("通过TCP监听到的数据为：%s", content)
 		} else {
 			continue
 		}
@@ -89,31 +96,34 @@ func (s *Server) readRequest(head *server.CallInfo) {
 		}
 		// 调用具体的方法
 		go invoke(head)
-		break
+		//break
 	}
 }
 
 // 响应请求
 func (s *Server) sendResponse(h *server.CallInfo) {
-	// 响应完之后，关闭连接
-	//defer func(){s.close <-0}()
-	rtn := <-h.Reply
-	close(h.Reply)
-	// 如果调用过程出错，则直接返回错误信息，不返回数据
-	if rtn.Code == constant.SUCCESS {
-		var reply []interface{}
-		if v, ok := rtn.Data.([]reflect.Value); ok {
-			for i := 0; i < len(v); i++ {
-				reply = append(reply, v[i].Interface())
+	for {
+		// 响应完之后，关闭连接
+		//defer func(){s.close <-0}()
+		rtn := <-h.Reply
+		//close(h.Reply)
+		// 如果调用过程出错，则直接返回错误信息，不返回数据
+		if rtn.Code == constant.SUCCESS {
+			var reply []interface{}
+			if v, ok := rtn.Data.([]reflect.Value); ok {
+				for i := 0; i < len(v); i++ {
+					reply = append(reply, v[i].Interface())
+				}
 			}
+			rtn.Data = reply
 		}
-		rtn.Data = reply
+		data, _ := json.Marshal(rtn)
+		// 写入时，必须以换行为结尾
+		data = append(data, []byte("\n")...)
+		// 写入数据
+		_, err := s.Conn.Write(data)
+		s.Log.Trace("写入返回结果[%s]完成, 错误信息：%s", string(data), err)
 	}
-	data, _ := json.Marshal(rtn)
-	// 写入时，必须以换行为结尾
-	data = append(data, []byte("\n")...)
-	// 写入数据
-	s.Conn.Write(data)
 }
 
 // 注册方法
