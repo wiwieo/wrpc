@@ -2,9 +2,9 @@ package client
 
 type Header struct {
 	ServiceName string
-	MethodName string
-	Args []interface{}
-	Reply []interface{}
+	MethodName  string
+	Args        []interface{}
+	Reply       []interface{}
 }
 
 type Response struct {

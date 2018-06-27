@@ -35,8 +35,8 @@ type Etcdv3 struct {
 }
 
 func NewEtcdv3(s *ServerInfo) (*Etcdv3, error) {
-	c, err  := clientv3.New(clientv3.Config{Endpoints: s.Endpoints})
-	if err != nil{
+	c, err := clientv3.New(clientv3.Config{Endpoints: s.Endpoints})
+	if err != nil {
 		return nil, err
 	}
 	return &Etcdv3{

@@ -1,10 +1,10 @@
 package util
 
 import (
-	"reflect"
 	"encoding/json"
-	"os"
 	"net"
+	"os"
+	"reflect"
 )
 
 // 将获取的json格式的数据，转换成对应方法的实体
