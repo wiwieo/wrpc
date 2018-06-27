@@ -43,6 +43,7 @@ type Example struct {
 
 var(
 	HOST = flag.String("host", "localhost:33333", "添加环境变量，如 [-host=localhost:33333]")
+	PORT = flag.String("port", "8080", "添加环境变量，如 [-port=8080]")
 	USE_ETCD = flag.Bool("use_etcd", true, "添加环境变量，如 [-use_etcd=true|false]")
 	SERVERNAME = flag.String("server_name", "wiwieo/wrpc", "添加环境变量，如 [-server_name=wiwieo/wrpc]")
 	ENDPOINTS = flag.String("endpoints", "http://localhost:2379", "添加环境变量，多个以逗号分隔 如 [-endpoints=http://localhost:2379,http://localhost:2380]")
@@ -67,5 +68,5 @@ func main() {
 func (e *Example) StartWeb(){
 	http.HandleFunc("/add", e.Add)
 
-	http.ListenAndServe(":8080", nil)
+	http.ListenAndServe(fmt.Sprintf(":%s", *PORT), nil)
 }

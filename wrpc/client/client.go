@@ -23,6 +23,7 @@ type Client struct {
 	e    *etcdv3.Etcdv3
 	conn chan net.Conn
 	b    balancer.Balancer
+	mux  sync.RWMutex
 }
 
 func Dial(network, address string) (net.Conn, error) {
@@ -46,7 +47,7 @@ func DialTCPConnect(is_used_etcd bool, host string, balanceType int, serviceName
 	return &Client{addr: host,
 		e:    e,
 		conn: make(chan net.Conn),
-		b: balancer.GetBalance(balanceType),
+		b:    balancer.GetBalance(balanceType),
 	}, nil
 }
 
@@ -59,16 +60,20 @@ func loadConn(host string) (net.Conn, error) {
 		}
 		return c, nil
 	} else {
-		conn := storeConn(host)
-		return conn, nil
+		return nil, fmt.Errorf("不存在可用的连接。")
 	}
 }
 
 func storeConn(host string) net.Conn {
+	conn, err := loadConn(host)
+	if err == nil{
+		return conn
+	}
 	v, ok := CONNECTED_POOL.Load(host)
 	if !ok {
 		conn, err := Dial("tcp", host)
 		if err != nil {
+			fmt.Println(err)
 			return nil
 		}
 		CONNECTED_POOL.Store(host, conn)
@@ -129,6 +134,8 @@ func (c *Client) NewConn(newOrOld bool) net.Conn {
 	}
 	conn, err := loadConn(addr)
 	if err != nil {
+		c.mux.Lock()
+		defer c.mux.Unlock()
 		conn = storeConn(addr)
 	}
 	return conn
@@ -177,12 +184,13 @@ func (c *Client) write(data []byte, tryTimes int) error {
 func (c *Client) response(w chan uint8, reply ...interface{}) error {
 	conn := <-c.conn
 	//
+	bufferReader := bufio.NewReader(conn)
 	for {
-		bufferReader := bufio.NewReader(conn)
 		context, err := bufferReader.ReadString(constant.END_SIGN)
 		if err != nil {
 			fmt.Println(err)
 			delConn(c.addr)
+			w <- 1
 			return err
 		}
 		if len(context) == 0 {
@@ -192,9 +200,11 @@ func (c *Client) response(w chan uint8, reply ...interface{}) error {
 		err = json.Unmarshal([]byte(context), &rsp)
 		if err != nil {
 			fmt.Println(err)
+			w <- 1
 			return err
 		}
 		if rsp.Code != constant.SUCCESS {
+			w <- 1
 			return fmt.Errorf("远程调用错误码：【%s】，错误信息：【%s】", rsp.Code, rsp.Message)
 		}
 		data, err := json.Marshal(rsp.Data)
@@ -205,9 +215,11 @@ func (c *Client) response(w chan uint8, reply ...interface{}) error {
 		err = json.Unmarshal(data, &reply)
 		if err != nil {
 			fmt.Println(err)
+			w <- 1
 			return err
 		}
 		w <- 1
+		// 一次请求的响应完成后，必须返回。否则会无限的循环
 		return nil
 	}
 	return nil

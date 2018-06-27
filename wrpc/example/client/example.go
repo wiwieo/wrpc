@@ -21,5 +21,5 @@ func (e *Example) Add(w http.ResponseWriter, r *http.Request){
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Println(fmt.Sprintf("add3的结果：%v", rply))
+	w.Write([]byte(fmt.Sprintf("调用结果：%v", rply)))
 }

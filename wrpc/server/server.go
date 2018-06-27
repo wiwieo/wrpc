@@ -8,8 +8,9 @@ import (
 	"reflect"
 	"wrpc/constant"
 	"wrpc/entity/server"
-	"wrpc/werror"
 	"wrpc/logger"
+	"wrpc/util"
+	"wrpc/werror"
 )
 
 type Server struct {
@@ -29,7 +30,7 @@ func StartServerForTCP(host string) {
 		conn, err := lister.Accept()
 		s := &Server{
 			Conn: conn,
-			Log: logger.NewStdLogger(true, true, true, true, true),
+			Log:  logger.NewStdLogger(true, true, true, true, true),
 			//close: make(chan uint8),
 		}
 		werror.CheckError(err)
@@ -73,11 +74,11 @@ func (s *Server) readRequest(head *server.CallInfo) {
 	for {
 		// 按行读取数据。客户端发送消息时，一条调用必须在一行内（协议）
 		content, err := bufferReader.ReadString(constant.END_SIGN)
-		if err != nil{
+		if err != nil {
 			s.Log.Trace("读取出错，需要关闭连接。")
 			break
 		}
-		if len(content) > 0{
+		if len(content) > 0 {
 			s.Log.Trace("通过TCP监听到的数据为：%s", content)
 		} else {
 			continue
@@ -180,12 +181,11 @@ func invoke(head *server.CallInfo) {
 		v := s.Method.Func.Call(args)
 
 		// 返回
-		reply := server.Response{
+		head.Reply <- server.Response{
 			Code:    constant.SUCCESS,
 			Message: constant.SUCCESS_MSG,
 			Data:    v,
 		}
-		head.Reply <- reply
 		return
 	}
 	code = constant.FAILED
@@ -216,7 +216,7 @@ func getParam(s *server.Service, head *server.CallInfo) ([]reflect.Value, error)
 			t = reflect.New(s.Method.Type.In(i))
 		}
 		// 将值存放进刚创建的实例中
-		err := converToStruct(t, head.Args[i-1])
+		err := util.ConverToStruct(t, head.Args[i-1])
 		// 参数转换错误，直接返回
 		if err != nil {
 			return nil, err
@@ -224,18 +224,4 @@ func getParam(s *server.Service, head *server.CallInfo) ([]reflect.Value, error)
 		args[i] = t
 	}
 	return args, nil
-}
-
-// 将获取的json格式的数据，转换成对应方法的实体
-func converToStruct(des reflect.Value, ori interface{}) error {
-	i := des.Interface()
-	data, err := json.Marshal(ori)
-	if err != nil {
-		return err
-	}
-	err = json.Unmarshal(data, i)
-	if err != nil {
-		return err
-	}
-	return nil
 }

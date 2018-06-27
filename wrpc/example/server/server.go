@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"wrpc/etcdv3"
 	"wrpc/server"
+	"wrpc/util"
 )
 
 type header struct {
@@ -34,18 +35,18 @@ func init() {
 }
 
 func main() {
+	ip := util.GetIP()
 	// 是否使用ETCD作服务注册发现
 	if *USE_ETCD {
 		// 服务注册进etcd中
 		e := etcdv3.Register(&etcdv3.ServerInfo{
-			Host:      "localhost",
+			Host:      ip,
 			Port:      *PORT,
 			Name:      *SERVERNAME,
 			Endpoints: strings.Split(*ENDPOINTS, ","),
 			TTL:       10,
 			Ctx:       context.Background(),
 		})
-		fmt.Println(*PORT)
 		// 当服务KILL之后，使用信号来作通知
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, syscall.SIGTERM, syscall.SIGINT, syscall.SIGKILL, syscall.SIGHUP, syscall.SIGQUIT)
@@ -59,6 +60,6 @@ func main() {
 
 	// 开启RPC服务监听
 	server.Register(&GateWay{}, "")
-	server.StartServerForTCP(fmt.Sprintf("localhost:%s", *PORT))
+	server.StartServerForTCP(fmt.Sprintf("%s:%s", ip, *PORT))
 	//http.ListenAndServe(":8080", nil)
 }
